@@ -104,7 +104,7 @@ class Solver(nn.Module):
         fetcher = InputFetcher(loaders.src, loaders.ref, args.latent_dim, 'train')
         fetcher_val = InputFetcher(loaders.val, None, args.latent_dim, 'val')
         x_fixed = next(fetcher_val)
-        x_fixed = x_fixed.src
+        x_fixed = x_fixed.x_src
 
         # resume training if necessary
         if args.resume_iter > 0:
