@@ -33,8 +33,10 @@ def main(args):
     print(args)
     cudnn.benchmark = True
     
-
+    if not os.path.exists('samples'):
+        os.makedirs('samples')
     solver = Solver(args)
+
 
     if args.mode == 'train':
         assert len(subdirs(args.train_img_dir)) == args.num_domains
