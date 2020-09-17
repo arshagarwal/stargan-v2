@@ -194,9 +194,9 @@ class Solver(nn.Module):
                     for j in range(args.num_domains):
                         label = torch.ones((x_fixed.size(0),),dtype=torch.long).to(self.device)
                         label = label*j
-                        z = torch.randn((x_fixed.size(0),self.latent_dim)).to(self.device)
-                        style = self.M(z,label)
-                        x_fake_list.append(self.G(x_fixed, style))
+                        z = torch.randn((x_fixed.size(0),args.latent_dim)).to(self.device)
+                        style = self.nets.mapping_network(z,label)
+                        x_fake_list.append(self.nets.generator(x_fixed, style))
                     x_concat = torch.cat(x_fake_list, dim=3)
                     sample_path = os.path.join('samples', '{}-images.jpg'.format(i+1))
                     save_image(self.denorm(x_concat.data.cpu()), sample_path, nrow=1, padding=0)
