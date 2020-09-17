@@ -13,6 +13,7 @@ from os.path import join as ospj
 import time
 import datetime
 from munch import Munch
+from torchvision.utils import save_image
 
 import torch
 import torch.nn as nn
@@ -57,6 +58,18 @@ class Solver(nn.Module):
         else:
             self.ckptios = [CheckpointIO(ospj(args.checkpoint_dir, '{:06d}_nets_ema.ckpt'), **self.nets_ema)]
 
+        # Multi-gpu Training
+        if self.args.gpus != "0" and torch.cuda.is_available():
+            self.gpus = self.gpus.split(',')
+            self.gpus = [int(i) for i in self.gpus]
+            self = torch.nn.DataParallel(self,device_ids=self.gpus)
+            """
+            self.nets.generator = torch.nn.DataParallel(self.G, device_ids=self.gpus)
+            self.nets.generator = torch.nn.DataParallel(self.D, device_ids=self.gpus)
+            self.M = torch.nn.DataParallel(self.M, device_ids=self.gpus)
+            self.S = torch.nn.DataParallel(self.S, device_ids=self.gpus)
+            """
+
         self.to(self.device)
         for name, network in self.named_children():
             # Do not initialize the FAN parameters
@@ -76,6 +89,11 @@ class Solver(nn.Module):
         for optim in self.optims.values():
             optim.zero_grad()
 
+    def denorm(self, x):
+        """Convert the range from [-1, 1] to [0, 1]."""
+        out = (x + 1) / 2
+        return out.clamp_(0, 1)
+
     def train(self, loaders):
         args = self.args
         nets = self.nets
@@ -85,7 +103,7 @@ class Solver(nn.Module):
         # fetch random validation images for debugging
         fetcher = InputFetcher(loaders.src, loaders.ref, args.latent_dim, 'train')
         fetcher_val = InputFetcher(loaders.val, None, args.latent_dim, 'val')
-        inputs_val = next(fetcher_val)
+        x_fixed = next(fetcher_val)
 
         # resume training if necessary
         if args.resume_iter > 0:
@@ -96,6 +114,7 @@ class Solver(nn.Module):
 
         print('Start training...')
         start_time = time.time()
+
         for i in range(args.resume_iter, args.total_iters):
             # fetch images and labels
             inputs = next(fetcher)
@@ -112,11 +131,14 @@ class Solver(nn.Module):
             d_loss.backward()
             optims.discriminator.step()
 
+            """
+            Removing Reference based training
             d_loss, d_losses_ref = compute_d_loss(
                 nets, args, x_real, y_org, y_trg, x_ref=x_ref, masks=masks)
             self._reset_grad()
             d_loss.backward()
             optims.discriminator.step()
+            """
 
             # train the generator
             g_loss, g_losses_latent = compute_g_loss(
@@ -127,11 +149,14 @@ class Solver(nn.Module):
             optims.mapping_network.step()
             optims.style_encoder.step()
 
+            """
+            Removing reference based training
             g_loss, g_losses_ref = compute_g_loss(
                 nets, args, x_real, y_org, y_trg, x_refs=[x_ref, x_ref2], masks=masks)
             self._reset_grad()
             g_loss.backward()
             optims.generator.step()
+            """
 
             # compute moving average of network parameters
             moving_average(nets.generator, nets_ema.generator, beta=0.999)
@@ -148,18 +173,33 @@ class Solver(nn.Module):
                 elapsed = str(datetime.timedelta(seconds=elapsed))[:-7]
                 log = "Elapsed time [%s], Iteration [%i/%i], " % (elapsed, i+1, args.total_iters)
                 all_losses = dict()
-                for loss, prefix in zip([d_losses_latent, d_losses_ref, g_losses_latent, g_losses_ref],
-                                        ['D/latent_', 'D/ref_', 'G/latent_', 'G/ref_']):
+                for loss, prefix in zip([d_losses_latent, g_losses_latent],
+                                        ['D/latent_', 'G/latent_']):
                     for key, value in loss.items():
                         all_losses[prefix + key] = value
                 all_losses['G/lambda_ds'] = args.lambda_ds
                 log += ' '.join(['%s: [%.4f]' % (key, value) for key, value in all_losses.items()])
                 print(log)
 
+            """
             # generate images for debugging
             if (i+1) % args.sample_every == 0:
                 os.makedirs(args.sample_dir, exist_ok=True)
                 utils.debug_image(nets_ema, args, inputs=inputs_val, step=i+1)
+            """
+            if (i+1) % args.sample_every == 0:
+                with torch.no_grad():
+                    x_fake_list = [x_fixed]
+                    for j in range(args.num_domains):
+                        label = torch.ones((x_fixed.size(0),),dtype=torch.long).to(self.device)
+                        label = label*j
+                        z = torch.randn((x_fixed.size(0),self.latent_dim)).to(self.device)
+                        style = self.M(z,label)
+                        x_fake_list.append(self.G(x_fixed, style))
+                    x_concat = torch.cat(x_fake_list, dim=3)
+                    sample_path = os.path.join('samples', '{}-images.jpg'.format(i+1))
+                    save_image(self.denorm(x_concat.data.cpu()), sample_path, nrow=1, padding=0)
+                    print('Saved real and fake images into {}...'.format(sample_path))
 
             # save model checkpoints
             if (i+1) % args.save_every == 0:
@@ -170,23 +210,6 @@ class Solver(nn.Module):
                 calculate_metrics(nets_ema, args, i+1, mode='latent')
                 calculate_metrics(nets_ema, args, i+1, mode='reference')
 
-    @torch.no_grad()
-    def sample(self, loaders):
-        args = self.args
-        nets_ema = self.nets_ema
-        os.makedirs(args.result_dir, exist_ok=True)
-        self._load_checkpoint(args.resume_iter)
-
-        src = next(InputFetcher(loaders.src, None, args.latent_dim, 'test'))
-        ref = next(InputFetcher(loaders.ref, None, args.latent_dim, 'test'))
-
-        fname = ospj(args.result_dir, 'reference.jpg')
-        print('Working on {}...'.format(fname))
-        utils.translate_using_reference(nets_ema, args, src.x, ref.x, ref.y, fname)
-
-        fname = ospj(args.result_dir, 'video_ref.mp4')
-        print('Working on {}...'.format(fname))
-        utils.video_ref(nets_ema, args, src.x, ref.x, ref.y, fname)
 
     @torch.no_grad()
     def evaluate(self):

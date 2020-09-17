@@ -106,7 +106,7 @@ if __name__ == '__main__':
                         help='Weight for diversity sensitive loss')
     parser.add_argument('--ds_iter', type=int, default=100000,
                         help='Number of iterations to optimize diversity sensitive loss')
-    parser.add_argument('--w_hpf', type=float, default=1,
+    parser.add_argument('--w_hpf', type=float, default=0,
                         help='weight for high-pass filtering')
 
     # training arguments
@@ -132,6 +132,7 @@ if __name__ == '__main__':
                         help='Weight decay for optimizer')
     parser.add_argument('--num_outs_per_domain', type=int, default=10,
                         help='Number of generated images per domain during sampling')
+    parser.add_argument('--gpus',type=str,default='0',help='gpu ids to be used during training')
 
     # misc
     parser.add_argument('--mode', type=str, required=True,
