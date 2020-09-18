@@ -145,7 +145,7 @@ class Generator(nn.Module):
         self.to_rgb = nn.Sequential(
             nn.InstanceNorm2d(dim_in, affine=True),
             nn.LeakyReLU(0.2),
-            SPN(nn.Conv2d(dim_in, 3, 1, 1, 0)))
+            nn.Conv2d(dim_in, 3, 1, 1, 0))
 
         # down/up-sampling blocks
         repeat_num = int(np.log2(img_size)) - 4
@@ -207,7 +207,7 @@ class MappingNetwork(nn.Module):
                                             nn.ReLU(),
                                             SPN(nn.Linear(512, 512)),
                                             nn.ReLU(),
-                                            SPN(nn.Linear(512, style_dim)))]
+                                            nn.Linear(512, style_dim))]
 
     def forward(self, z, y):
         h = self.shared(z)
@@ -270,7 +270,7 @@ class Discriminator(nn.Module):
         blocks += [nn.LeakyReLU(0.2)]
         blocks += [SPN((nn.Conv2d(dim_out, dim_out, 4, 1, 0)))]
         blocks += [nn.LeakyReLU(0.2)]
-        blocks += [SPN((nn.Conv2d(dim_out, num_domains, 1, 1, 0)))]
+        blocks += [nn.Conv2d(dim_out, num_domains, 1, 1, 0)]
         self.main = nn.Sequential(*blocks)
 
     def forward(self, x, y):
