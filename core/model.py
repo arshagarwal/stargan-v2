@@ -10,12 +10,14 @@ Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 
 import copy
 import math
+from typing import Any
 
 from munch import Munch
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.nn.utils.spectral_norm as SPN
 
 from core.wing import FAN
 
@@ -31,13 +33,13 @@ class ResBlk(nn.Module):
         self._build_weights(dim_in, dim_out)
 
     def _build_weights(self, dim_in, dim_out):
-        self.conv1 = nn.Conv2d(dim_in, dim_in, 3, 1, 1)
-        self.conv2 = nn.Conv2d(dim_in, dim_out, 3, 1, 1)
+        self.conv1 = SPN(nn.Conv2d(dim_in, dim_in, 3, 1, 1))
+        self.conv2 = SPN(nn.Conv2d(dim_in, dim_out, 3, 1, 1))
         if self.normalize:
             self.norm1 = nn.InstanceNorm2d(dim_in, affine=True)
             self.norm2 = nn.InstanceNorm2d(dim_in, affine=True)
         if self.learned_sc:
-            self.conv1x1 = nn.Conv2d(dim_in, dim_out, 1, 1, 0, bias=False)
+            self.conv1x1 = SPN(nn.Conv2d(dim_in, dim_out, 1, 1, 0, bias=False))
 
     def _shortcut(self, x):
         if self.learned_sc:
@@ -68,7 +70,7 @@ class AdaIN(nn.Module):
     def __init__(self, style_dim, num_features):
         super().__init__()
         self.norm = nn.InstanceNorm2d(num_features, affine=False)
-        self.fc = nn.Linear(style_dim, num_features*2)
+        self.fc = SPN(nn.Linear(style_dim, num_features*2))
 
     def forward(self, x, s):
         h = self.fc(s)
@@ -88,12 +90,12 @@ class AdainResBlk(nn.Module):
         self._build_weights(dim_in, dim_out, style_dim)
 
     def _build_weights(self, dim_in, dim_out, style_dim=64):
-        self.conv1 = nn.Conv2d(dim_in, dim_out, 3, 1, 1)
-        self.conv2 = nn.Conv2d(dim_out, dim_out, 3, 1, 1)
+        self.conv1 = SPN(nn.Conv2d(dim_in, dim_out, 3, 1, 1))
+        self.conv2 = SPN(nn.Conv2d(dim_out, dim_out, 3, 1, 1))
         self.norm1 = AdaIN(style_dim, dim_in)
         self.norm2 = AdaIN(style_dim, dim_out)
         if self.learned_sc:
-            self.conv1x1 = nn.Conv2d(dim_in, dim_out, 1, 1, 0, bias=False)
+            self.conv1x1 = SPN(nn.Conv2d(dim_in, dim_out, 1, 1, 0, bias=False))
 
     def _shortcut(self, x):
         if self.upsample:
@@ -137,13 +139,13 @@ class Generator(nn.Module):
         super().__init__()
         dim_in = 2**14 // img_size
         self.img_size = img_size
-        self.from_rgb = nn.Conv2d(3, dim_in, 3, 1, 1)
+        self.from_rgb = SPN(nn.Conv2d(3, dim_in, 3, 1, 1))
         self.encode = nn.ModuleList()
         self.decode = nn.ModuleList()
         self.to_rgb = nn.Sequential(
             nn.InstanceNorm2d(dim_in, affine=True),
             nn.LeakyReLU(0.2),
-            nn.Conv2d(dim_in, 3, 1, 1, 0))
+            SPN(nn.Conv2d(dim_in, 3, 1, 1, 0)))
 
         # down/up-sampling blocks
         repeat_num = int(np.log2(img_size)) - 4
@@ -190,22 +192,22 @@ class MappingNetwork(nn.Module):
     def __init__(self, latent_dim=16, style_dim=64, num_domains=2):
         super().__init__()
         layers = []
-        layers += [nn.Linear(latent_dim, 512)]
+        layers += [SPN(nn.Linear(latent_dim, 512))]
         layers += [nn.ReLU()]
         for _ in range(3):
-            layers += [nn.Linear(512, 512)]
+            layers += [SPN(nn.Linear(512, 512))]
             layers += [nn.ReLU()]
         self.shared = nn.Sequential(*layers)
 
         self.unshared = nn.ModuleList()
         for _ in range(num_domains):
-            self.unshared += [nn.Sequential(nn.Linear(512, 512),
+            self.unshared += [nn.Sequential(SPN(nn.Linear(512, 512)),
                                             nn.ReLU(),
-                                            nn.Linear(512, 512),
+                                            SPN(nn.Linear(512, 512)),
                                             nn.ReLU(),
-                                            nn.Linear(512, 512),
+                                            SPN(nn.Linear(512, 512)),
                                             nn.ReLU(),
-                                            nn.Linear(512, style_dim))]
+                                            SPN(nn.Linear(512, style_dim)))]
 
     def forward(self, z, y):
         h = self.shared(z)
@@ -223,7 +225,7 @@ class StyleEncoder(nn.Module):
         super().__init__()
         dim_in = 2**14 // img_size
         blocks = []
-        blocks += [nn.Conv2d(3, dim_in, 3, 1, 1)]
+        blocks += [SPN(nn.Conv2d(3, dim_in, 3, 1, 1))]
 
         repeat_num = int(np.log2(img_size)) - 2
         for _ in range(repeat_num):
@@ -232,7 +234,7 @@ class StyleEncoder(nn.Module):
             dim_in = dim_out
 
         blocks += [nn.LeakyReLU(0.2)]
-        blocks += [nn.Conv2d(dim_out, dim_out, 4, 1, 0)]
+        blocks += [SPN(nn.Conv2d(dim_out, dim_out, 4, 1, 0))]
         blocks += [nn.LeakyReLU(0.2)]
         self.shared = nn.Sequential(*blocks)
 
@@ -257,7 +259,7 @@ class Discriminator(nn.Module):
         super().__init__()
         dim_in = 2**14 // img_size
         blocks = []
-        blocks += [nn.Conv2d(3, dim_in, 3, 1, 1)]
+        blocks += [(nn.Conv2d(3, dim_in, 3, 1, 1))]
 
         repeat_num = int(np.log2(img_size)) - 2
         for _ in range(repeat_num):
@@ -266,9 +268,9 @@ class Discriminator(nn.Module):
             dim_in = dim_out
 
         blocks += [nn.LeakyReLU(0.2)]
-        blocks += [nn.Conv2d(dim_out, dim_out, 4, 1, 0)]
+        blocks += [(nn.Conv2d(dim_out, dim_out, 4, 1, 0))]
         blocks += [nn.LeakyReLU(0.2)]
-        blocks += [nn.Conv2d(dim_out, num_domains, 1, 1, 0)]
+        blocks += [(nn.Conv2d(dim_out, num_domains, 1, 1, 0))]
         self.main = nn.Sequential(*blocks)
 
     def forward(self, x, y):
