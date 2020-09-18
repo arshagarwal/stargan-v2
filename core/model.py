@@ -259,7 +259,7 @@ class Discriminator(nn.Module):
         super().__init__()
         dim_in = 2**14 // img_size
         blocks = []
-        blocks += [(nn.Conv2d(3, dim_in, 3, 1, 1))]
+        blocks += [SPN((nn.Conv2d(3, dim_in, 3, 1, 1)))]
 
         repeat_num = int(np.log2(img_size)) - 2
         for _ in range(repeat_num):
@@ -268,9 +268,9 @@ class Discriminator(nn.Module):
             dim_in = dim_out
 
         blocks += [nn.LeakyReLU(0.2)]
-        blocks += [(nn.Conv2d(dim_out, dim_out, 4, 1, 0))]
+        blocks += [SPN((nn.Conv2d(dim_out, dim_out, 4, 1, 0)))]
         blocks += [nn.LeakyReLU(0.2)]
-        blocks += [(nn.Conv2d(dim_out, num_domains, 1, 1, 0))]
+        blocks += [SPN((nn.Conv2d(dim_out, num_domains, 1, 1, 0)))]
         self.main = nn.Sequential(*blocks)
 
     def forward(self, x, y):
