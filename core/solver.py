@@ -60,15 +60,15 @@ class Solver(nn.Module):
 
         # Multi-gpu Training
         if self.args.gpus != "0" and torch.cuda.is_available():
-            self.gpus = self.gpus.split(',')
+            self.gpus = self.args.gpus.split(',')
             self.gpus = [int(i) for i in self.gpus]
-            self = torch.nn.DataParallel(self,device_ids=self.gpus)
-            """
-            self.nets.generator = torch.nn.DataParallel(self.G, device_ids=self.gpus)
-            self.nets.generator = torch.nn.DataParallel(self.D, device_ids=self.gpus)
-            self.M = torch.nn.DataParallel(self.M, device_ids=self.gpus)
-            self.S = torch.nn.DataParallel(self.S, device_ids=self.gpus)
-            """
+            #self = torch.nn.DataParallel(self,device_ids=self.gpus)
+
+            self.nets.generator = torch.nn.DataParallel(self.nets.generator, device_ids=self.gpus)
+            self.nets.generator = torch.nn.DataParallel(self.nets.discriminator, device_ids=self.gpus)
+            self.nets.mapping_network = torch.nn.DataParallel(self.nets.mapping_network, device_ids=self.gpus)
+            self.nets.style_encoder = torch.nn.DataParallel(self.nets.style_encoder, device_ids=self.gpus)
+
 
         self.to(self.device)
         for name, network in self.named_children():
