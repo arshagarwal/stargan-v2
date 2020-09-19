@@ -73,7 +73,7 @@ class Solver(nn.Module):
             # Do not initialize the FAN parameters
             if ('ema' not in name) and ('fan' not in name):
                 print('Initializing %s...' % name)
-                network.apply(utils.he_init)
+                #network.apply(utils.he_init)
 
     def _save_checkpoint(self, step):
         for ckptio in self.ckptios:
