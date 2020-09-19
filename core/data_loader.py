@@ -1,213 +1,92 @@
-"""
-StarGAN v2
-Copyright (c) 2020-present NAVER Corp.
-
-This work is licensed under the Creative Commons Attribution-NonCommercial
-4.0 International License. To view a copy of this license, visit
-http://creativecommons.org/licenses/by-nc/4.0/ or send a letter to
-Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
-"""
-
-from pathlib import Path
-from itertools import chain
+from torch.utils import data
+from torchvision import transforms as T
+from torchvision.datasets import ImageFolder
+from PIL import Image
+import torch
 import os
 import random
 
-from munch import Munch
-from PIL import Image
-import numpy as np
 
-import torch
-from torch.utils import data
-from torch.utils.data.sampler import WeightedRandomSampler
-from torchvision import transforms
-from torchvision.datasets import ImageFolder
+class CelebA(data.Dataset):
+    """Dataset class for the CelebA dataset."""
 
-
-def listdir(dname):
-    fnames = list(chain(*[list(Path(dname).rglob('*.' + ext))
-                          for ext in ['png', 'jpg', 'jpeg', 'JPG']]))
-    return fnames
-
-
-class DefaultDataset(data.Dataset):
-    def __init__(self, root, transform=None):
-        self.samples = listdir(root)
-        self.samples.sort()
+    def __init__(self, image_dir, attr_path, selected_attrs, transform, mode):
+        """Initialize and preprocess the CelebA dataset."""
+        self.image_dir = image_dir
+        self.attr_path = attr_path
+        self.selected_attrs = selected_attrs
         self.transform = transform
-        self.targets = None
-
-    def __getitem__(self, index):
-        fname = self.samples[index]
-        img = Image.open(fname).convert('RGB')
-        if self.transform is not None:
-            img = self.transform(img)
-        return img
-
-    def __len__(self):
-        return len(self.samples)
-
-
-class ReferenceDataset(data.Dataset):
-    def __init__(self, root, transform=None):
-        self.samples, self.targets = self._make_dataset(root)
-        self.transform = transform
-
-    def _make_dataset(self, root):
-        domains = os.listdir(root)
-        fnames, fnames2, labels = [], [], []
-        for idx, domain in enumerate(sorted(domains)):
-            class_dir = os.path.join(root, domain)
-            cls_fnames = listdir(class_dir)
-            fnames += cls_fnames
-            fnames2 += random.sample(cls_fnames, len(cls_fnames))
-            labels += [idx] * len(cls_fnames)
-        return list(zip(fnames, fnames2)), labels
-
-    def __getitem__(self, index):
-        fname, fname2 = self.samples[index]
-        label = self.targets[index]
-        img = Image.open(fname).convert('RGB')
-        img2 = Image.open(fname2).convert('RGB')
-        if self.transform is not None:
-            img = self.transform(img)
-            img2 = self.transform(img2)
-        return img, img2, label
-
-    def __len__(self):
-        return len(self.targets)
-
-
-def _make_balanced_sampler(labels):
-    class_counts = np.bincount(labels)
-    class_weights = 1. / class_counts
-    weights = class_weights[labels]
-    return WeightedRandomSampler(weights, len(weights))
-
-
-def get_train_loader(root, which='source', img_size=256,
-                     batch_size=8, prob=0.5, num_workers=4):
-    print('Preparing DataLoader to fetch %s images '
-          'during the training phase...' % which)
-
-    crop = transforms.RandomResizedCrop(
-        img_size, scale=[0.8, 1.0], ratio=[0.9, 1.1])
-    rand_crop = transforms.Lambda(
-        lambda x: crop(x) if random.random() < prob else x)
-
-    transform = transforms.Compose([
-        rand_crop,
-        transforms.Resize([img_size, img_size]),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5, 0.5, 0.5],
-                             std=[0.5, 0.5, 0.5]),
-    ])
-
-    if which == 'source':
-        dataset = ImageFolder(root, transform)
-    elif which == 'reference':
-        dataset = ReferenceDataset(root, transform)
-    else:
-        raise NotImplementedError
-
-    sampler = _make_balanced_sampler(dataset.targets)
-    return data.DataLoader(dataset=dataset,
-                           batch_size=batch_size,
-                           sampler=sampler,
-                           num_workers=num_workers,
-                           pin_memory=True,
-                           drop_last=True)
-
-
-def get_eval_loader(root, img_size=256, batch_size=32,
-                    imagenet_normalize=True, shuffle=True,
-                    num_workers=4, drop_last=False):
-    print('Preparing DataLoader for the evaluation phase...')
-    if imagenet_normalize:
-        height, width = 299, 299
-        mean = [0.485, 0.456, 0.406]
-        std = [0.229, 0.224, 0.225]
-    else:
-        height, width = img_size, img_size
-        mean = [0.5, 0.5, 0.5]
-        std = [0.5, 0.5, 0.5]
-
-    transform = transforms.Compose([
-        transforms.Resize([img_size, img_size]),
-        transforms.Resize([height, width]),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=mean, std=std)
-    ])
-
-    dataset = DefaultDataset(root, transform=transform)
-    return data.DataLoader(dataset=dataset,
-                           batch_size=batch_size,
-                           shuffle=shuffle,
-                           num_workers=num_workers,
-                           pin_memory=True,
-                           drop_last=drop_last)
-
-
-def get_test_loader(root, img_size=256, batch_size=32,
-                    shuffle=True, num_workers=4):
-    print('Preparing DataLoader for the generation phase...')
-    transform = transforms.Compose([
-        transforms.Resize([img_size, img_size]),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5, 0.5, 0.5],
-                             std=[0.5, 0.5, 0.5]),
-    ])
-
-    dataset = ImageFolder(root, transform)
-    return data.DataLoader(dataset=dataset,
-                           batch_size=batch_size,
-                           shuffle=shuffle,
-                           num_workers=num_workers,
-                           pin_memory=True)
-
-
-class InputFetcher:
-    def __init__(self, loader, loader_ref=None, latent_dim=16, mode=''):
-        self.loader = loader
-        self.loader_ref = loader_ref
-        self.latent_dim = latent_dim
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.mode = mode
+        self.train_dataset = []
+        self.test_dataset = []
+        self.attr2idx = {}
+        self.idx2attr = {}
+        self.preprocess()
 
-    def _fetch_inputs(self):
-        try:
-            x, y = next(self.iter)
-        except (AttributeError, StopIteration):
-            self.iter = iter(self.loader)
-            x, y = next(self.iter)
-        return x, y
-
-    def _fetch_refs(self):
-        try:
-            x, x2, y = next(self.iter_ref)
-        except (AttributeError, StopIteration):
-            self.iter_ref = iter(self.loader_ref)
-            x, x2, y = next(self.iter_ref)
-        return x, x2, y
-
-    def __next__(self):
-        x, y = self._fetch_inputs()
-        if self.mode == 'train':
-            x_ref, x_ref2, y_ref = self._fetch_refs()
-            z_trg = torch.randn(x.size(0), self.latent_dim)
-            z_trg2 = torch.randn(x.size(0), self.latent_dim)
-            inputs = Munch(x_src=x, y_src=y, y_ref=y_ref,
-                           x_ref=x_ref, x_ref2=x_ref2,
-                           z_trg=z_trg, z_trg2=z_trg2)
-        elif self.mode == 'val':
-            x_ref, y_ref = self._fetch_inputs()
-            inputs = Munch(x_src=x, y_src=y,
-                           x_ref=x_ref, y_ref=y_ref)
-        elif self.mode == 'test':
-            inputs = Munch(x=x, y=y)
+        if mode == 'train':
+            self.num_images = len(self.train_dataset)
         else:
-            raise NotImplementedError
+            self.num_images = len(self.test_dataset)
 
-        return Munch({k: v.to(self.device)
-                      for k, v in inputs.items()})
+    def preprocess(self):
+        """Preprocess the CelebA attribute file."""
+        lines = [line.rstrip() for line in open(self.attr_path, 'r')]
+        all_attr_names = lines[1].split()
+        for i, attr_name in enumerate(all_attr_names):
+            self.attr2idx[attr_name] = i
+            self.idx2attr[i] = attr_name
+
+        lines = lines[2:]
+        random.seed(1234)
+        random.shuffle(lines)
+        for i, line in enumerate(lines):
+            split = line.split()
+            filename = split[0]
+            values = split[1:]
+
+            label = []
+            for attr_name in self.selected_attrs:
+                idx = self.attr2idx[attr_name]
+                label.append(values[idx] == '1')
+
+            if (i+1) < 2000:
+                self.test_dataset.append([filename, label])
+            else:
+                self.train_dataset.append([filename, label])
+
+        print('Finished preprocessing the CelebA dataset...')
+
+    def __getitem__(self, index):
+        """Return one image and its corresponding attribute label."""
+        dataset = self.train_dataset if self.mode == 'train' else self.test_dataset
+        filename, label = dataset[index]
+        image = Image.open(os.path.join(self.image_dir, filename))
+        return self.transform(image), torch.FloatTensor(label)
+
+    def __len__(self):
+        """Return the number of images."""
+        return self.num_images
+
+
+def get_loader(image_dir, attr_path, selected_attrs, crop_size=178, image_size=128,
+               batch_size=16, dataset='CelebA', mode='train', num_workers=1):
+    """Build and return a data loader."""
+    transform = []
+    if mode == 'train':
+        #transform.append(T.RandomHorizontalFlip())
+        pass
+    transform.append(T.Resize(image_size))
+    transform.append(T.ToTensor())
+    transform.append(T.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)))
+    transform = T.Compose(transform)
+
+    if dataset == 'CelebA':
+        dataset = CelebA(image_dir, attr_path, selected_attrs, transform, mode)
+    elif dataset == 'RaFD':
+        dataset = ImageFolder(image_dir, transform)
+
+    data_loader = data.DataLoader(dataset=dataset,
+                                  batch_size=batch_size,
+                                  shuffle=(mode=='train'),
+                                  num_workers=num_workers)
+    return data_loader

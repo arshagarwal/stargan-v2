@@ -21,9 +21,7 @@ import torch.nn.functional as F
 
 from core.model import build_model
 from core.checkpoint import CheckpointIO
-from core.data_loader import InputFetcher
 import core.utils as utils
-from metrics.eval import calculate_metrics
 
 
 class Solver(nn.Module):
@@ -94,17 +92,16 @@ class Solver(nn.Module):
         out = (x + 1) / 2
         return out.clamp_(0, 1)
 
-    def train(self, loaders):
+    def train(self, data_loader):
         args = self.args
         nets = self.nets
         nets_ema = self.nets_ema
         optims = self.optims
 
-        # fetch random validation images for debugging
-        fetcher = InputFetcher(loaders.src, loaders.ref, args.latent_dim, 'train')
-        fetcher_val = InputFetcher(loaders.val, None, args.latent_dim, 'val')
-        x_fixed = next(fetcher_val)
-        x_fixed = x_fixed.x_src
+        # Fetch fixed inputs for debugging.
+        data_iter = iter(data_loader)
+        x_fixed, label_fixed = next(data_iter)
+        x_fixed = x_fixed.to(self.device)
 
         # resume training if necessary
         if args.resume_iter > 0:
@@ -117,17 +114,28 @@ class Solver(nn.Module):
         start_time = time.time()
 
         for i in range(args.resume_iter, args.total_iters):
-            # fetch images and labels
-            inputs = next(fetcher)
-            x_real, y_org = inputs.x_src, inputs.y_src
-            x_ref, x_ref2, y_trg = inputs.x_ref, inputs.x_ref2, inputs.y_ref
-            z_trg, z_trg2 = inputs.z_trg, inputs.z_trg2
 
-            masks = nets.fan.get_heatmap(x_real) if args.w_hpf > 0 else None
+            # Fetch real images and labels.
+            try:
+                x_real, label_org = next(data_iter)
+            except:
+                data_iter = iter(data_loader)
+                x_real, label_org = next(data_iter)
+
+            # Generate target domain labels randomly.
+            rand_idx = torch.randperm(label_org.size(0))
+            label_trg = label_org[rand_idx]
+
+            x_real = x_real.to(self.device)  # Input images.
+            label_org = label_org.to(self.device)  # Labels for computing classification loss.
+            label_trg = label_trg.to(self.device)  # Labels for computing classification loss.
+
+            masks = None
 
             # train the discriminator
+            z_trg = torch.randn((x_real.size(0),args.latent_dim)).to(self.device)
             d_loss, d_losses_latent = compute_d_loss(
-                nets, args, x_real, y_org, y_trg, z_trg=z_trg, masks=masks)
+                nets, args, x_real, label_org, label_trg, z_trg=z_trg, masks=masks)
             self._reset_grad()
             d_loss.backward()
             optims.discriminator.step()
@@ -142,8 +150,11 @@ class Solver(nn.Module):
             """
 
             # train the generator
+            z_trg = torch.randn((x_real.size(0), args.latent_dim)).to(self.device)
+            z_trg2 = torch.randn((x_real.size(0), args.latent_dim)).to(self.device)
+
             g_loss, g_losses_latent = compute_g_loss(
-                nets, args, x_real, y_org, y_trg, z_trgs=[z_trg, z_trg2], masks=masks)
+                nets, args, x_real, label_org, label_trg, z_trgs=[z_trg, z_trg2], masks=masks)
             self._reset_grad()
             g_loss.backward()
             optims.generator.step()
@@ -208,20 +219,7 @@ class Solver(nn.Module):
             if (i+1) % args.save_every == 0:
                 self._save_checkpoint(step=i+1)
 
-            # compute FID and LPIPS if necessary
-            if (i+1) % args.eval_every == 0:
-                calculate_metrics(nets_ema, args, i+1, mode='latent')
-                calculate_metrics(nets_ema, args, i+1, mode='reference')
 
-
-    @torch.no_grad()
-    def evaluate(self):
-        args = self.args
-        nets_ema = self.nets_ema
-        resume_iter = args.resume_iter
-        self._load_checkpoint(args.resume_iter)
-        calculate_metrics(nets_ema, args, step=resume_iter, mode='latent')
-        calculate_metrics(nets_ema, args, step=resume_iter, mode='reference')
 
 
 def compute_d_loss(nets, args, x_real, y_org, y_trg, z_trg=None, x_ref=None, masks=None):

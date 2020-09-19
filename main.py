@@ -14,9 +14,7 @@ import argparse
 from munch import Munch
 from torch.backends import cudnn
 import torch
-
-from core.data_loader import get_train_loader
-from core.data_loader import get_test_loader
+from core.data_loader import get_loader
 from core.solver import Solver
 
 
@@ -39,40 +37,13 @@ def main(args):
 
 
     if args.mode == 'train':
-        assert len(subdirs(args.train_img_dir)) == args.num_domains
-        assert len(subdirs(args.val_img_dir)) == args.num_domains
-        loaders = Munch(src=get_train_loader(root=args.train_img_dir,
-                                             which='source',
-                                             img_size=args.img_size,
-                                             batch_size=args.batch_size,
-                                             prob=args.randcrop_prob,
-                                             num_workers=args.num_workers),
-                        ref=get_train_loader(root=args.train_img_dir,
-                                             which='reference',
-                                             img_size=args.img_size,
-                                             batch_size=args.batch_size,
-                                             prob=args.randcrop_prob,
-                                             num_workers=args.num_workers),
-                        val=get_test_loader(root=args.val_img_dir,
-                                            img_size=args.img_size,
-                                            batch_size=args.val_batch_size,
-                                            shuffle=True,
-                                            num_workers=args.num_workers))
+        loaders = get_loader(args.train_img_dir, None, None,
+                            None, args.img_size, args.batch_size,
+                            'RaFD', args.mode, args.num_workers)
         solver.train(loaders)
     elif args.mode == 'sample':
-        assert len(subdirs(args.src_dir)) == args.num_domains
-        assert len(subdirs(args.ref_dir)) == args.num_domains
-        loaders = Munch(src=get_test_loader(root=args.src_dir,
-                                            img_size=args.img_size,
-                                            batch_size=args.val_batch_size,
-                                            shuffle=False,
-                                            num_workers=args.num_workers),
-                        ref=get_test_loader(root=args.ref_dir,
-                                            img_size=args.img_size,
-                                            batch_size=args.val_batch_size,
-                                            shuffle=False,
-                                            num_workers=args.num_workers))
-        solver.sample(loaders)
+        pass
+
     elif args.mode == 'eval':
         solver.evaluate()
     elif args.mode == 'align':
@@ -98,13 +69,13 @@ if __name__ == '__main__':
                         help='Style code dimension')
 
     # weight for objective functions
-    parser.add_argument('--lambda_reg', type=float, default=1,
+    parser.add_argument('--lambda_reg', type=float, default=0,
                         help='Weight for R1 regularization')
     parser.add_argument('--lambda_cyc', type=float, default=1,
                         help='Weight for cyclic consistency loss')
     parser.add_argument('--lambda_sty', type=float, default=1,
                         help='Weight for style reconstruction loss')
-    parser.add_argument('--lambda_ds', type=float, default=1,
+    parser.add_argument('--lambda_ds', type=float, default=0,
                         help='Weight for diversity sensitive loss')
     parser.add_argument('--ds_iter', type=int, default=100000,
                         help='Number of iterations to optimize diversity sensitive loss')
