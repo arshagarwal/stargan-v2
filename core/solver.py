@@ -160,9 +160,11 @@ class Solver(nn.Module):
             """
 
             # compute moving average of network parameters
+            """
             moving_average(nets.generator, nets_ema.generator, beta=0.999)
             moving_average(nets.mapping_network, nets_ema.mapping_network, beta=0.999)
             moving_average(nets.style_encoder, nets_ema.style_encoder, beta=0.999)
+            """
 
             # decay weight for diversity sensitive loss
             if args.lambda_ds > 0:
@@ -227,7 +229,8 @@ def compute_d_loss(nets, args, x_real, y_org, y_trg, z_trg=None, x_ref=None, mas
     # with real images
     x_real.requires_grad_()
     out = nets.discriminator(x_real, y_org)
-    loss_real = adv_loss(out, 1)
+    #loss_real = adv_loss(out, 1)
+    loss_real = torch.mean(torch.nn.ReLU(inplace=True)(1 - out))
     loss_reg = r1_reg(out, x_real)
 
     # with fake images
@@ -239,7 +242,8 @@ def compute_d_loss(nets, args, x_real, y_org, y_trg, z_trg=None, x_ref=None, mas
 
         x_fake = nets.generator(x_real, s_trg, masks=masks)
     out = nets.discriminator(x_fake, y_trg)
-    loss_fake = adv_loss(out, 0)
+    #loss_fake = adv_loss(out, 0)
+    loss_fake = torch.mean(torch.nn.ReLU(inplace=True)(1+out))
 
     loss = loss_real + loss_fake + args.lambda_reg * loss_reg
     return loss, Munch(real=loss_real.item(),
@@ -262,11 +266,13 @@ def compute_g_loss(nets, args, x_real, y_org, y_trg, z_trgs=None, x_refs=None, m
 
     x_fake = nets.generator(x_real, s_trg, masks=masks)
     out = nets.discriminator(x_fake, y_trg)
-    loss_adv = adv_loss(out, 1)
+    #loss_adv = adv_loss(out, 1)
+    loss_adv = -torch.mean(out)
 
     # style reconstruction loss
     s_pred = nets.style_encoder(x_fake, y_trg)
     loss_sty = torch.mean(torch.abs(s_pred - s_trg))
+
 
     # diversity sensitive loss
     if z_trgs is not None:
