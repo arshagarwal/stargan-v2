@@ -269,8 +269,7 @@ def compute_g_loss(nets, args, x_real, y_org, y_trg, z_trgs=None, x_refs=None, m
 
     # style reconstruction loss
     s_pred = nets.style_encoder(x_fake, y_trg)
-    #loss_sty = torch.mean(torch.abs(s_pred - s_trg))
-    loss_sty = 0
+    loss_sty = torch.mean(torch.abs(s_pred - s_trg))
 
 
     # diversity sensitive loss
@@ -292,7 +291,7 @@ def compute_g_loss(nets, args, x_real, y_org, y_trg, z_trgs=None, x_refs=None, m
     loss = loss_adv + args.lambda_sty * loss_sty \
         - args.lambda_ds * loss_ds + args.lambda_cyc * loss_cyc
     return loss, Munch(adv=loss_adv.item(),
-                       sty=loss,
+                       sty=loss_sty.item(),
                        ds=loss_ds,
                        cyc=loss_cyc.item())
 
