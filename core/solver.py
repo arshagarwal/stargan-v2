@@ -46,7 +46,7 @@ class Solver(nn.Module):
                 self.optims[net] = torch.optim.Adam(
                     params=self.nets[net].parameters(),
                     lr=args.f_lr if net == 'mapping_network' else args.lr,
-                    betas=[args.beta1, args.beta2])
+                    betas=[args.beta1, args.beta2], weight_decay=args.weight_decay)
 
             self.ckptios = [
                 CheckpointIO(ospj(args.checkpoint_dir, '{:06d}_nets.ckpt'), **self.nets),
@@ -228,7 +228,8 @@ def compute_d_loss(nets, args, x_real, y_org, y_trg, z_trg=None, x_ref=None, mas
     out = nets.discriminator(x_real, y_org)
     #loss_real = adv_loss(out, 1)
     loss_real = torch.mean(torch.nn.ReLU(inplace=True)(1 - out))
-    loss_reg = r1_reg(out, x_real)
+    #loss_reg = r1_reg(out, x_real)
+    loss_reg = 0
 
     # with fake images
     with torch.no_grad():
@@ -268,7 +269,8 @@ def compute_g_loss(nets, args, x_real, y_org, y_trg, z_trgs=None, x_refs=None, m
 
     # style reconstruction loss
     s_pred = nets.style_encoder(x_fake, y_trg)
-    loss_sty = torch.mean(torch.abs(s_pred - s_trg))
+    #loss_sty = torch.mean(torch.abs(s_pred - s_trg))
+    loss_sty = 0
 
 
     # diversity sensitive loss
@@ -278,7 +280,8 @@ def compute_g_loss(nets, args, x_real, y_org, y_trg, z_trgs=None, x_refs=None, m
         s_trg2 = nets.style_encoder(x_ref2, y_trg)
     x_fake2 = nets.generator(x_real, s_trg2, masks=masks)
     x_fake2 = x_fake2.detach()
-    loss_ds = torch.mean(torch.abs(x_fake - x_fake2))
+    #loss_ds = torch.mean(torch.abs(x_fake - x_fake2))
+    loss_ds = 0
 
     # cycle-consistency loss
     masks = nets.fan.get_heatmap(x_fake) if args.w_hpf > 0 else None
