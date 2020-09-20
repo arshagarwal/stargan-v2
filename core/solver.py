@@ -246,7 +246,7 @@ def compute_d_loss(nets, args, x_real, y_org, y_trg, z_trg=None, x_ref=None, mas
     loss = loss_real + loss_fake + args.lambda_reg * loss_reg
     return loss, Munch(real=loss_real.item(),
                        fake=loss_fake.item(),
-                       reg=loss_reg.item())
+                       reg=loss_reg)
 
 
 def compute_g_loss(nets, args, x_real, y_org, y_trg, z_trgs=None, x_refs=None, masks=None):
@@ -292,8 +292,8 @@ def compute_g_loss(nets, args, x_real, y_org, y_trg, z_trgs=None, x_refs=None, m
     loss = loss_adv + args.lambda_sty * loss_sty \
         - args.lambda_ds * loss_ds + args.lambda_cyc * loss_cyc
     return loss, Munch(adv=loss_adv.item(),
-                       sty=loss_sty.item(),
-                       ds=loss_ds.item(),
+                       sty=loss,
+                       ds=loss_ds,
                        cyc=loss_cyc.item())
 
 
