@@ -46,8 +46,7 @@ class Solver(nn.Module):
                 self.optims[net] = torch.optim.Adam(
                     params=self.nets[net].parameters(),
                     lr=args.f_lr if net == 'mapping_network' else args.lr,
-                    betas=[args.beta1, args.beta2],
-                    weight_decay=args.weight_decay)
+                    betas=[args.beta1, args.beta2])
 
             self.ckptios = [
                 CheckpointIO(ospj(args.checkpoint_dir, '{:06d}_nets.ckpt'), **self.nets),
@@ -73,7 +72,7 @@ class Solver(nn.Module):
             # Do not initialize the FAN parameters
             if ('ema' not in name) and ('fan' not in name):
                 print('Initializing %s...' % name)
-                #network.apply(utils.he_init)
+                network.apply(utils.he_init)
 
     def _save_checkpoint(self, step):
         for ckptio in self.ckptios:
