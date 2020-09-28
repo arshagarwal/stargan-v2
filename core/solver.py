@@ -56,24 +56,20 @@ class Solver(nn.Module):
         else:
             self.ckptios = [CheckpointIO(ospj(args.checkpoint_dir, '{:06d}_nets_ema.ckpt'), **self.nets_ema)]
 
-        # Multi-gpu Training
-        if self.args.gpus != "0" and torch.cuda.is_available():
-            self.gpus = self.gpus.split(',')
-            self.gpus = [int(i) for i in self.gpus]
-            self = torch.nn.DataParallel(self,device_ids=self.gpus)
-            """
-            self.nets.generator = torch.nn.DataParallel(self.G, device_ids=self.gpus)
-            self.nets.generator = torch.nn.DataParallel(self.D, device_ids=self.gpus)
-            self.M = torch.nn.DataParallel(self.M, device_ids=self.gpus)
-            self.S = torch.nn.DataParallel(self.S, device_ids=self.gpus)
-            """
-
-        self.to(self.device)
         for name, network in self.named_children():
             # Do not initialize the FAN parameters
             if ('ema' not in name) and ('fan' not in name):
+
+                # Multi-gpu Training
+                if self.args.gpus != "0" and torch.cuda.is_available():
+                    self.gpus = self.gpus.split(',')
+                    self.gpus = [int(i) for i in self.gpus]
+                    network = torch.nn.DataParallel(network, device_ids=self.gpus)
+
                 print('Initializing %s...' % name)
                 network.apply(utils.he_init)
+                
+        self.to(self.device)
 
     def _save_checkpoint(self, step):
         for ckptio in self.ckptios:
