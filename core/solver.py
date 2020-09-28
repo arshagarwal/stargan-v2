@@ -29,6 +29,7 @@ class Solver(nn.Module):
         super().__init__()
         self.args = args
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.gpus = args.gpus
 
         self.nets, self.nets_ema = build_model(args)
         # below setattrs are to make networks be children of Solver, e.g., for self.to(self.device)
@@ -68,7 +69,7 @@ class Solver(nn.Module):
 
                 print('Initializing %s...' % name)
                 network.apply(utils.he_init)
-                
+
         self.to(self.device)
 
     def _save_checkpoint(self, step):
