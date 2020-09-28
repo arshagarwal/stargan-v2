@@ -63,14 +63,10 @@ class Solver(nn.Module):
         for name, network in self.named_children():
             # Do not initialize the FAN parameters
             if ('ema' not in name) and ('fan' not in name):
-                # Multi-gpu Training
-                if self.args.gpus != "0" and torch.cuda.is_available():
-                    network = torch.nn.DataParallel(network, device_ids=self.gpus)
-
                 print('Initializing %s...' % name)
                 network.apply(utils.he_init)
 
-        self.to(self.device)
+        #self.to(self.device)
 
     def _save_checkpoint(self, step):
         for ckptio in self.ckptios:
@@ -92,6 +88,16 @@ class Solver(nn.Module):
     def train(self, data_loader):
         args = self.args
         nets = self.nets
+        if self.args.gpus != "0" and torch.cuda.is_available():
+            nets.generator = torch.nn.DataParallel(nets.generator, device_ids=self.gpus)
+            nets.discriminator = torch.nn.DataParallel(nets.discriminator, device_ids=self.gpus)
+            nets.mapping_network = torch.nn.DataParallel(nets.mapping_network, device_ids=self.gpus)
+            nets.style_encoder = torch.nn.DataParallel(nets.style_encoder, device_ids=self.gpus)
+            nets.generator.to(self.device)
+            nets.discriminator.to(self.device)
+            nets.mapping_network.to(self.device)
+            nets.style_encoder.to(self.device)
+
         nets_ema = self.nets_ema
         optims = self.optims
 
