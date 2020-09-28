@@ -69,11 +69,11 @@ if __name__ == '__main__':
                         help='Style code dimension')
 
     # weight for objective functions
-    parser.add_argument('--lambda_reg', type=float, default=0,
+    parser.add_argument('--lambda_reg', type=float, default=1,
                         help='Weight for R1 regularization')
     parser.add_argument('--lambda_cyc', type=float, default=1,
                         help='Weight for cyclic consistency loss')
-    parser.add_argument('--lambda_sty', type=float, default=1,
+    parser.add_argument('--lambda_sty', type=float, default=0,
                         help='Weight for style reconstruction loss')
     parser.add_argument('--lambda_ds', type=float, default=0,
                         help='Weight for diversity sensitive loss')
