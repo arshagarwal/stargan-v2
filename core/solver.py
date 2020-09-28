@@ -30,6 +30,9 @@ class Solver(nn.Module):
         self.args = args
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.gpus = args.gpus
+        if self.args.gpus != "0" and torch.cuda.is_available():
+            self.gpus = self.gpus.split(',')
+            self.gpus = [int(i) for i in self.gpus]
 
         self.nets, self.nets_ema = build_model(args)
         # below setattrs are to make networks be children of Solver, e.g., for self.to(self.device)
@@ -60,11 +63,8 @@ class Solver(nn.Module):
         for name, network in self.named_children():
             # Do not initialize the FAN parameters
             if ('ema' not in name) and ('fan' not in name):
-
                 # Multi-gpu Training
                 if self.args.gpus != "0" and torch.cuda.is_available():
-                    self.gpus = self.gpus.split(',')
-                    self.gpus = [int(i) for i in self.gpus]
                     network = torch.nn.DataParallel(network, device_ids=self.gpus)
 
                 print('Initializing %s...' % name)
