@@ -88,6 +88,8 @@ class Solver(nn.Module):
     def train(self, data_loader):
         args = self.args
         nets = self.nets
+        nets_ema = self.nets_ema
+        optims = self.optims
         if self.args.gpus != "0" and torch.cuda.is_available():
             nets.generator = torch.nn.DataParallel(nets.generator, device_ids=self.gpus)
             nets.discriminator = torch.nn.DataParallel(nets.discriminator, device_ids=self.gpus)
@@ -97,9 +99,14 @@ class Solver(nn.Module):
             nets.discriminator.to(self.device)
             nets.mapping_network.to(self.device)
             nets.style_encoder.to(self.device)
+            # allocating ema networks
+            nets_ema.generator = torch.nn.DataParallel(nets_ema.generator, device_ids=self.gpus)
+            nets_ema.mapping_network = torch.nn.DataParallel(nets_ema.mapping_network, device_ids=self.gpus)
+            nets_ema.style_encoder = torch.nn.DataParallel(nets_ema.style_encoder, device_ids=self.gpus)
+            nets_ema.generator.to(self.device)
+            nets_ema.mapping_network.to(self.device)
+            nets_ema.style_encoder.to(self.device)
 
-        nets_ema = self.nets_ema
-        optims = self.optims
 
         # Fetch fixed inputs for debugging.
         data_iter = iter(data_loader)
@@ -174,11 +181,10 @@ class Solver(nn.Module):
             """
 
             # compute moving average of network parameters
-            """
             moving_average(nets.generator, nets_ema.generator, beta=0.999)
             moving_average(nets.mapping_network, nets_ema.mapping_network, beta=0.999)
             moving_average(nets.style_encoder, nets_ema.style_encoder, beta=0.999)
-            """
+
 
             # decay weight for diversity sensitive loss
             if args.lambda_ds > 0:
@@ -198,12 +204,14 @@ class Solver(nn.Module):
                 log += ' '.join(['%s: [%.4f]' % (key, value) for key, value in all_losses.items()])
                 print(log)
 
-            """
+
             # generate images for debugging
+            """
             if (i+1) % args.sample_every == 0:
                 os.makedirs(args.sample_dir, exist_ok=True)
                 utils.debug_image(nets_ema, args, inputs=inputs_val, step=i+1)
-            """
+                """
+
             if (i+1) % args.sample_every == 0:
                 with torch.no_grad():
                     x_fake_list = [x_fixed]
@@ -211,8 +219,8 @@ class Solver(nn.Module):
                         label = torch.ones((x_fixed.size(0),),dtype=torch.long).to(self.device)
                         label = label*j
                         z = torch.randn((x_fixed.size(0),args.latent_dim)).to(self.device)
-                        style = self.nets.mapping_network(z,label)
-                        x_fake_list.append(self.nets.generator(x_fixed, style))
+                        style = nets_ema.mapping_network(z,label)
+                        x_fake_list.append(nets_ema.generator(x_fixed, style))
                     x_concat = torch.cat(x_fake_list, dim=3)
                     sample_path = os.path.join('samples', '{}-images.jpg'.format(i+1))
                     save_image(self.denorm(x_concat.data.cpu()), sample_path, nrow=1, padding=0)
