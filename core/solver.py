@@ -172,7 +172,7 @@ class Solver(nn.Module):
             g_loss.backward()
             optims.generator.step()
             optims.mapping_network.step()
-            optims.style_encoder.step()
+
 
             """
             Removing reference based training
@@ -186,7 +186,7 @@ class Solver(nn.Module):
             # compute moving average of network parameters
             moving_average(nets.generator, nets_ema.generator, beta=0.999)
             moving_average(nets.mapping_network, nets_ema.mapping_network, beta=0.999)
-            moving_average(nets.style_encoder, nets_ema.style_encoder, beta=0.999)
+
 
 
             # decay weight for diversity sensitive loss
@@ -247,10 +247,7 @@ def compute_d_loss(nets, args, x_real, y_org, y_trg, z_trg=None, x_ref=None, mas
 
     # with fake images
     with torch.no_grad():
-        if z_trg is not None:
-            s_trg = nets.mapping_network(z_trg, y_trg)
-        else:  # x_ref is not None
-            s_trg = nets.style_encoder(x_ref, y_trg)
+        s_trg = nets.mapping_network(z_trg, y_trg)
 
         x_fake = nets.generator(x_real, s_trg, masks=masks)
     out = nets.discriminator(x_fake, y_trg)
@@ -271,10 +268,7 @@ def compute_g_loss(nets, args, x_real, y_org, y_trg, z_trgs=None, x_refs=None, m
         x_ref, x_ref2 = x_refs
 
     # adversarial loss
-    if z_trgs is not None:
-        s_trg = nets.mapping_network(z_trg, y_trg)
-    else:
-        s_trg = nets.style_encoder(x_ref, y_trg)
+    s_trg = nets.mapping_network(z_trg, y_trg)
 
     x_fake = nets.generator(x_real, s_trg, masks=masks)
     out = nets.discriminator(x_fake, y_trg)
@@ -282,8 +276,7 @@ def compute_g_loss(nets, args, x_real, y_org, y_trg, z_trgs=None, x_refs=None, m
     loss_adv = -torch.mean(out)
 
     # cycle-consistency loss
-    masks = nets.fan.get_heatmap(x_fake) if args.w_hpf > 0 else None
-    s_org = nets.style_encoder(x_real, y_org)
+    s_org = nets.mapping_network(z_trg2, y_org)
     x_rec = nets.generator(x_fake, s_org, masks=masks)
     loss_cyc = torch.mean(torch.abs(x_rec - x_real))
 
