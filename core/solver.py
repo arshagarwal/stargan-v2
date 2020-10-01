@@ -94,19 +94,22 @@ class Solver(nn.Module):
             nets.generator = torch.nn.DataParallel(nets.generator, device_ids=self.gpus)
             nets.discriminator = torch.nn.DataParallel(nets.discriminator, device_ids=self.gpus)
             nets.mapping_network = torch.nn.DataParallel(nets.mapping_network, device_ids=self.gpus)
-            nets.style_encoder = torch.nn.DataParallel(nets.style_encoder, device_ids=self.gpus)
             nets.generator.to(self.device)
             nets.discriminator.to(self.device)
             nets.mapping_network.to(self.device)
-            nets.style_encoder.to(self.device)
+
             # allocating ema networks
             nets_ema.generator = torch.nn.DataParallel(nets_ema.generator, device_ids=self.gpus)
             nets_ema.mapping_network = torch.nn.DataParallel(nets_ema.mapping_network, device_ids=self.gpus)
-            nets_ema.style_encoder = torch.nn.DataParallel(nets_ema.style_encoder, device_ids=self.gpus)
             nets_ema.generator.to(self.device)
             nets_ema.mapping_network.to(self.device)
-            nets_ema.style_encoder.to(self.device)
 
+        else:
+            nets_ema.generator.to(self.device)
+            nets_ema.mapping_network.to(self.device)
+            nets.generator.to(self.device)
+            nets.discriminator.to(self.device)
+            nets.mapping_network.to(self.device)
 
         # Fetch fixed inputs for debugging.
         data_iter = iter(data_loader)
@@ -278,31 +281,14 @@ def compute_g_loss(nets, args, x_real, y_org, y_trg, z_trgs=None, x_refs=None, m
     #loss_adv = adv_loss(out, 1)
     loss_adv = -torch.mean(out)
 
-    # style reconstruction loss
-    s_pred = nets.style_encoder(x_fake, y_trg)
-    loss_sty = torch.mean(torch.abs(s_pred - s_trg))
-
-
-    # diversity sensitive loss
-    if z_trgs is not None:
-        s_trg2 = nets.mapping_network(z_trg2, y_trg)
-    else:
-        s_trg2 = nets.style_encoder(x_ref2, y_trg)
-    x_fake2 = nets.generator(x_real, s_trg2, masks=masks)
-    x_fake2 = x_fake2.detach()
-    loss_ds = torch.mean(torch.abs(x_fake - x_fake2))
-
     # cycle-consistency loss
     masks = nets.fan.get_heatmap(x_fake) if args.w_hpf > 0 else None
     s_org = nets.style_encoder(x_real, y_org)
     x_rec = nets.generator(x_fake, s_org, masks=masks)
     loss_cyc = torch.mean(torch.abs(x_rec - x_real))
 
-    loss = loss_adv + args.lambda_sty * loss_sty \
-        - args.lambda_ds * loss_ds + args.lambda_cyc * loss_cyc
+    loss = loss_adv + args.lambda_cyc * loss_cyc
     return loss, Munch(adv=loss_adv.item(),
-                       sty=loss_sty.item(),
-                       ds=loss_ds.item(),
                        cyc=loss_cyc.item())
 
 
