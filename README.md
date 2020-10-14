@@ -42,11 +42,11 @@ bash download.sh pretrained-network-afhq
 ```
 
 ## Training networks
-To train StarGAN v2 from scratch, run the following commands. Generated images and network checkpoints will be stored in the `expr/samples` and `expr/checkpoints` directories, respectively. Training takes about three days on a single Tesla V100 GPU. Please see [here](https://github.com/clovaai/stargan-v2/blob/master/main.py#L86-L179) for training arguments and a description of them. 
+To train StarGAN v2 from scratch, run the following commands. Generated images and network checkpoints will be stored in the `samples` and `expr/checkpoints` directories, respectively. Training takes about three days on a single Tesla V100 GPU. Please see [here](https://github.com/clovaai/stargan-v2/blob/master/main.py#L86-L179) for training arguments and a description of them. 
 
 ```bash
 # celeba-hq
-python main.py --mode train --num_domains 2 --w_hpf 1 \
+python main.py --mode train --num_domains 2 \
                --train_img_dir data/celeba_hq/train \
                --val_img_dir data/celeba_hq/val --gpus 0,1
 
@@ -55,4 +55,7 @@ python main.py --mode train --num_domains 3 \
                --train_img_dir data/afhq/train \
                --val_img_dir data/afhq/val --gpus 0,1
 ```
-Use the `--gpus` argument to provide as input a string separated with **","** denoting device-ids of gpus to be used for training.  
+## Multi-gpu training 
+Use the `--gpus` argument to provide as input a string separated with **","** denoting device-ids of gpus to be used for training.
+## Resuming training
+Use the `--resume_iter` argument to restart training from a specifc checkpoint. 
