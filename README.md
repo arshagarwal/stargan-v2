@@ -55,4 +55,4 @@ python main.py --mode train --num_domains 3 \
                --train_img_dir data/afhq/train \
                --val_img_dir data/afhq/val --gpus 0,1
 ```
-Use the `--gpus` argument to provide as input a string separated with **","** denoting device-ids.  
+Use the `--gpus` argument to provide as input a string separated with **","** denoting device-ids of gpus to be used for training.  
