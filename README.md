@@ -1,9 +1,11 @@
 
 ## StarGAN v2 - PyTorch Implementation with multi-gpu support
 
-> This repository contains adapts heavily from official stargan-v2 model but simplifies data loading, removes style encoder, provides multi-gpu support making it easier to experiment. 
 
-> Video: https://youtu.be/0EVh5Ki4dIY<br>
+This repository adapts heavily from official stargan-v2 repository but simplifies data loading, removes style encoder, which greatly expedites training speed with marginal quality tradeoffs, provides multi-gpu support making it easier to experiment. Also, the repository makes use of Hinge-Loss instead of non-saturating loss which I conclude, through my experiments, works better in this particular setting.  
+
+## Following are the results on CelebA-HQ Male-to-Female dataset.
+![Results](https://github.com/arshagarwal/stargan-v2/blob/test3/assets/28500_256images.jpg)
 
 ## Software installation
 Clone this repository:
@@ -45,13 +47,11 @@ To train StarGAN v2 from scratch, run the following commands. Generated images a
 ```bash
 # celeba-hq
 python main.py --mode train --num_domains 2 --w_hpf 1 \
-               --lambda_reg 1 --lambda_sty 1 --lambda_ds 1 --lambda_cyc 1 \
                --train_img_dir data/celeba_hq/train \
                --val_img_dir data/celeba_hq/val --gpus 0,1
 
 # afhq
-python main.py --mode train --num_domains 3 --w_hpf 0 \
-               --lambda_reg 1 --lambda_sty 1 --lambda_ds 2 --lambda_cyc 1 \
+python main.py --mode train --num_domains 3 \
                --train_img_dir data/afhq/train \
                --val_img_dir data/afhq/val --gpus 0,1
 ```
